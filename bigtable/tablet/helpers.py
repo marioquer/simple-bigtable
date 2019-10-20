@@ -3,7 +3,7 @@ import os
 import shutil
 from heapq import *
 
-folder_path = './files/'
+folder_path = os.path.realpath('./files/')
 server_metadata_path = folder_path + 'metadata'
 
 def read_dict_from_file(filepath):
