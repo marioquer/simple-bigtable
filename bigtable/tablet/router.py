@@ -50,10 +50,10 @@ Cell Opreations
 def cell_ops(pk):
     if request.method == 'POST':
         # Insert a cell
-        return tablet_server.insert_cell(pk, request.form)
+        return tablet_server.insert_cell(pk, request.data)
     else:
         # Retrieve a cell
-        return tablet_server.retreive_cell(pk, request.form)
+        return tablet_server.retreive_cell(pk, request.data)
 
 
 '''
