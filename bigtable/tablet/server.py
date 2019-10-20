@@ -17,7 +17,7 @@ class TabletServer:
         else:
             self.metadata = read_server_metadata()
             # restore all table objs
-            for key, val in self.metadata['tables']:
+            for key in self.metadata['tables'].keys():
                 self.table_objs[key] = Table(key)
 
     def list_tables(self):
@@ -36,9 +36,6 @@ class TabletServer:
         if table_name in self.metadata['tables']:
             return '', 409
 
-        # create new Table obj and add to map
-        self.table_objs[table_name] = Table(table_name)
-
         # add to dict and save to disk
         self.metadata['tables'][table_name] = args_dict
         write_server_metadata(self.metadata)
@@ -47,6 +44,9 @@ class TabletServer:
         except OSError:
             print ("Creation of the directory %s failed" % path)        
         
+        # create new Table obj and add to map
+        self.table_objs[table_name] = Table(table_name)
+
         return '', 200
 
     def delete_table(self, table_name):
@@ -142,7 +142,7 @@ class Table:
         write_table_wal(self.name, args_dict)
         heappush(self.memtable, (args_dict['row'], args_dict))
         self.do_memtable_spill(max_mem_row)
-        
+
 
     def do_memtable_spill(self, max_mem_row):
         memtable_len = len(self.memtable)
