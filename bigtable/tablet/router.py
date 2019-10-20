@@ -1,5 +1,7 @@
 from flask import Flask, escape, request
+# from server import *
 from bigtable.tablet.server import *
+
 
 app = Flask(__name__)
 tablet_server = TabletServer()
@@ -7,26 +9,29 @@ tablet_server = TabletServer()
 '''
 Table Operations
 '''
-@app.route('/api/tables', methods=['GET', 'POST', 'DELETE'])
+@app.route('/api/tables', methods=['GET', 'POST'])
 def tables_ops():
-    print(tablet_server.name)
     if request.method == 'POST':
         # Create Table
-        return tablet_server.create_table(request.form)
-    elif request.method == 'DELETE':
-        # Delete Table
-        return tablet_server.delete_table(request.args['pk'])
+        return tablet_server.create_table(request.data)
     else:
         # List Tables
         return tablet_server.list_tables()
+
+'''
+Table destroy
+'''
+@app.route('/api/tables/<string:pk>', methods=['DELETE'])
+def tables_destroy(pk):
+    return tablet_server.delete_table(pk)
+
 
 '''
 Get Table Info
 '''
 @app.route('/api/tables/<string:pk>', methods=['GET'])
 def tables_info(pk):
-    return {}
-
+    return tablet_server.get_table_info(pk)
 
 
 '''
@@ -35,9 +40,7 @@ Row Operations
 @app.route('/api/table/<string:pk>/row', methods=['GET'])
 def row_retreive(pk):
     # Retrieve a row
-    print('get')
-    pass
-    return {}
+    return tablet_server.retreive_row(pk, request.form['row'])
 
 
 '''
@@ -47,13 +50,10 @@ Cell Opreations
 def cell_ops(pk):
     if request.method == 'POST':
         # Insert a cell
-        print(request.form)
-        pass
+        return tablet_server.insert_cell(pk, request.form)
     else:
         # Retrieve a cell
-        print(request.args)
-        pass
-    return {}
+        return tablet_server.retreive_cell(pk, request.form)
 
 
 '''
@@ -61,8 +61,7 @@ Retrieve cells
 '''
 @app.route('/api/table/<string:pk>/cells', methods=['GET'])
 def cells_retrieve(pk):
-    print(request.args)
-    return {}
+    return tablet_server.retreive_cells(pk, request.form)
 
 
 '''
@@ -70,5 +69,8 @@ Set MemTable Max Entries
 '''
 @app.route('/api/memtable', methods=['POST'])
 def max_entries():
-    print(request.form)
-    return {}
+    return tablet_server.set_memtable_max(request.form['memtable_max'])
+
+
+if __name__ == "__main__":
+    app.run(host='localhost', port='8000', threaded=False)
