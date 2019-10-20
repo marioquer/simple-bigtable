@@ -99,16 +99,64 @@ class TabletServer:
         return '', 400
     
     def retreive_cell(self, table_name, args):
-        pass
+        try:
+            args_dict = json.loads(args)
+        except ValueError:
+            return '', 400
+
+        column_family = args_dict['column_family']
+        column = args_dict['column']
+        row = args_dict['row']
+
+        # check existence of table
+        if not table_name in self.table_objs:
+            return '', 404
+
+        table = self.table_objs[table_name]
+
+        # check existence of column family and column
+        table_structure = self.metadata['tables'][table_name]
+        for cf in table_structure['column_families']:
+            if cf['column_family_key'] == column_family and column in cf['columns']:
+                return table.get_a_cell(row, column_family, column), 200
+
+        # column family or column not found
+        return '', 400
+
 
     def retreive_cells(self, table_name, args):
-        pass
+        try:
+            args_dict = json.loads(args)
+        except ValueError:
+            return '', 400
+
+        # check existence of table
+        if not table_name in self.table_objs:
+            return '', 404
+
+        column_family = args_dict['column_family']
+        column = args_dict['column']
+        row_from = args_dict['row_from']
+        row_to = args_dict['row_to']
+
+        # check existence of column family and column
+        table_structure = self.metadata['tables'][table_name]
+        for cf in table_structure['column_families']:
+            if cf['column_family_key'] == column_family and column in cf['columns']:
+                return table.get_cells(row_from, row_to, column_family, column), 200
+
+        # column family or column not found
+        return '', 400
+        
+        
 
     def retreive_row(self, table_name, row):
         pass
 
     def set_memtable_max(self, max_value):
         pass
+
+
 
 
 class Table:
@@ -144,15 +192,53 @@ class Table:
         self.do_memtable_spill(max_mem_row)
 
 
+    def get_a_cell(self, rowkey, column_family, column):
+        sorted_memtable = nsmallest(len(self.memtable), self.memtable)
+
+        rowlist = []
+        # binary search in memtable
+        mem_start = self.binary_search_first_index(sorted_memtable, rowkey)
+        mem_end = self.binary_search_last_index(sorted_memtable, rowkey)
+        if mem_start != -1 and mem_end != -1:
+            rowlist.extend(sorted_memtable[mem_start, mem_end + 1])
+
+        # binary search in sstable
+        cell_sstables = self.memindex.get(rowkey, [])
+        for s in cell_sstables:
+            ssdata = read_dict_from_table_file(self.name, s)
+            ss_start = self.binary_search_first_index(ssdata, rowkey)
+            ss_end = self.binary_search_last_index(ssdata, rowkey)
+            rowlist.extend(ssdata[ss_start, ss_end + 1])
+
+        # construct result list
+        resultset = []
+        for row in rowlist:
+            row_data = row[1]
+            if row_data['column_family'] == column_family and row_data['column'] == column:
+                for val in row_data['data']:
+                    heappush(resultset, (val['time'], val))
+        result = []
+        for t in nlargest(5, resultset):
+            result.append(t[1])
+        
+        return result
+
+
+    def get_cells(self, row_from, row_to, column_family, column):
+        sorted_memtable = nsmallest(len(self.memtable), self.memtable)
+
+        
+
+
     def do_memtable_spill(self, max_mem_row):
         memtable_len = len(self.memtable)
         if memtable_len > max_mem_row:
             # split
-            sstable_data = self.memtable[0:max_mem_row]
+            sstable_data = self.memtable[0: max_mem_row]
             self.memtable = self.memtable[max_mem_row:]
-            # store sstable
+            # store sstable with sorted key
             sstable_name = 'sstable{}'.format(self.metadata['next_sstable_index'])
-            write_dict_to_table_file(self.name, sstable_name, sstable_data)
+            write_dict_to_table_file(self.name, sstable_name, nsmallest(max_mem_row, sstable_data))
             self.metadata['next_sstable_index'] += 1
             # construct in-memory index
             for t in sstable_data:
@@ -163,5 +249,41 @@ class Table:
             write_dict_to_table_file(self.name, 'ssindex', self.memindex)
             # mark committed in wal
             self.metadata['uncommited_wal_line'] += max_mem_row
-            
-        
+
+
+    def binary_search_first_index(self, input_list, rowkey):
+        start = 0
+        end = len(input_list) - 1
+        mid = (start + end) / 2
+        index = -1
+
+        while (start <= end):
+            if rowkey < input_list[mid][0]:
+                end = mid - 1
+            elif rowkey == input_list[mid][0]:
+                end = mid - 1
+                index = mid
+            else:
+                start = mid + 1
+            mid = (start + end) / 2
+
+        return index
+
+
+    def binary_search_last_index(self, input_list, rowkey):
+        start = 0
+        end = len(input_list) - 1
+        mid = (start + end) / 2
+        index = -1
+
+        while (start <= end):
+            if rowkey < input_list[mid][0]:
+                end = mid - 1
+            elif rowkey == input_list[mid][0]:
+                end = mid + 1
+                index = mid
+            else:
+                start = mid + 1
+            mid = (start + end) / 2
+
+        return index
