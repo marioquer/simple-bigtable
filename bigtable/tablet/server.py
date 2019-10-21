@@ -154,7 +154,18 @@ class TabletServer:
         pass
 
     def set_memtable_max(self, max_value):
-        pass
+        # update max_mem_row of metadata
+        self.metadata['max_mem_row'] = max_value
+
+        # update server metadata in the disk
+        write_server_metadata(self.metadata)
+
+        # check if update successfully
+        new_metadata = read_server_metadata()
+        if new_metadata['max_mem_row'] == max_value:
+            return '', 200
+        else:
+            return '', 500
 
 
 
