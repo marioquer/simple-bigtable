@@ -61,7 +61,7 @@ Retrieve cells
 '''
 @app.route('/api/table/<string:pk>/cells', methods=['GET'])
 def cells_retrieve(pk):
-    return tablet_server.retrieve_cells(pk, request.form)
+    return tablet_server.retrieve_cells(pk, request.data)
 
 
 '''

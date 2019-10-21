@@ -92,6 +92,7 @@ class TabletServer:
         table_structure = self.metadata['tables'][table_name]
         for cf in table_structure['column_families']:
             if cf['column_family_key'] == column_family and column in cf['columns']:
+                print('inserting data {}'.format(args_dict))
                 table.write_cell(args_dict, self.metadata['max_mem_row'])
                 return '', 200
 
@@ -118,6 +119,7 @@ class TabletServer:
         table_structure = self.metadata['tables'][table_name]
         for cf in table_structure['column_families']:
             if cf['column_family_key'] == column_family and column in cf['columns']:
+                print('retrieving data!!!')
                 return table.get_a_cell(row, column_family, column), 200
 
         # column family or column not found
@@ -138,6 +140,8 @@ class TabletServer:
         column = args_dict['column']
         row_from = args_dict['row_from']
         row_to = args_dict['row_to']
+
+        table = self.table_objs[table_name]
 
         # check existence of column family and column
         table_structure = self.metadata['tables'][table_name]
@@ -199,6 +203,7 @@ class Table:
         # 1. write wal
         # 2. append memtable and even do spilling
         write_table_wal(self.name, args_dict)
+        print(args_dict)
         heappush(self.memtable, (args_dict['row'], args_dict))
         self.do_memtable_spill(max_mem_row)
 
@@ -206,21 +211,26 @@ class Table:
     def get_a_cell(self, rowkey, column_family, column):
         sorted_memtable = nsmallest(len(self.memtable), self.memtable)
 
+        print('search in memtable')
         rowlist = []
         # binary search in memtable
         mem_start = self.binary_search_first_index(sorted_memtable, rowkey)
         mem_end = self.binary_search_last_index(sorted_memtable, rowkey)
         if mem_start != -1 and mem_end != -1:
-            rowlist.extend(sorted_memtable[mem_start, mem_end + 1])
+            rowlist.extend(sorted_memtable[mem_start: mem_end + 1])
 
+
+
+        print('search in sstable')
         # binary search in sstable
         cell_sstables = self.memindex.get(rowkey, [])
         for s in cell_sstables:
             ssdata = read_dict_from_table_file(self.name, s)
             ss_start = self.binary_search_first_index(ssdata, rowkey)
             ss_end = self.binary_search_last_index(ssdata, rowkey)
-            rowlist.extend(ssdata[ss_start, ss_end + 1])
+            rowlist.extend(ssdata[ss_start: ss_end + 1])
 
+        print('construct result')
         # construct result list
         resultset = []
         for row in rowlist:
@@ -232,7 +242,10 @@ class Table:
         for t in nlargest(5, resultset):
             result.append(t[1])
         
-        return result
+        return {
+            'row': rowkey,
+            'data': result
+        }
 
 
     def get_cells(self, row_from, row_to, column_family, column):
@@ -240,18 +253,18 @@ class Table:
 
         rowlist = []
         # binary search in memtable
-        mem_start = self.binary_search_first_index(sorted_memtable, rowkey, True)
-        mem_end = self.binary_search_last_index(sorted_memtable, rowkey, True)
+        mem_start = self.binary_search_first_index(sorted_memtable, row_from, True)
+        mem_end = self.binary_search_last_index(sorted_memtable, row_to, True)
         if mem_start != -1 and mem_end != -1:
-            rowlist.extend(sorted_memtable[mem_start, mem_end + 1])
+            rowlist.extend(sorted_memtable[mem_start: mem_end + 1])
 
         # binary search in sstable
         for i in range(self.metadata['next_sstable_index']):
             ssdata = read_dict_from_table_file(self.name, 'sstable{}'.format(i))
-            ss_start = self.binary_search_first_index(ssdata, rowkey, True)
-            ss_end = self.binary_search_last_index(ssdata, rowkey, True)
+            ss_start = self.binary_search_first_index(ssdata, row_from, True)
+            ss_end = self.binary_search_last_index(ssdata, row_to, True)
             if ss_start != -1 and ss_end != -1:
-                rowlist.extend(ssdata[ss_start, ss_end + 1])
+                rowlist.extend(ssdata[ss_start: ss_end + 1])
 
         # get all needed cells
         resultset = {}
@@ -318,7 +331,6 @@ class Table:
             else:
                 start = mid + 1
             mid = (start + end) // 2
-
         return index
 
 
@@ -332,12 +344,11 @@ class Table:
             if rowkey < input_list[mid][0]:
                 end = mid - 1
             elif rowkey == input_list[mid][0]:
-                end = mid + 1
+                start = mid + 1
                 index = mid
             else:
                 if smaller:
                     index = mid
                 start = mid + 1
             mid = (start + end) // 2
-
         return index
