@@ -72,19 +72,22 @@ class TabletServer:
         return self.metadata['tables'][table_name], 200
 
     def insert_cell(self, table_name, args):
-        try:
-            args_dict = json.loads(args)
-        except ValueError:
-            return '', 400
+        # check existence of table
+        print('{}, {}'.format(table_name, self.table_objs.keys()))
+        if not table_name in self.table_objs.keys():
+            return '', 404
+
+        # check json format
+        if args != b'':
+            try:
+                args_dict = json.loads(args)
+            except ValueError:
+                return '', 400
 
         column_family = args_dict['column_family']
         column = args_dict['column']
         row = args_dict['row']
         data = args_dict['data']
-
-        # check existence of table
-        if not table_name in self.table_objs:
-            return '', 404
         
         table = self.table_objs[table_name]
 
@@ -92,7 +95,6 @@ class TabletServer:
         table_structure = self.metadata['tables'][table_name]
         for cf in table_structure['column_families']:
             if cf['column_family_key'] == column_family and column in cf['columns']:
-                print('inserting data {}'.format(args_dict))
                 table.write_cell(args_dict, self.metadata['max_mem_row'])
                 return '', 200
 
@@ -100,18 +102,19 @@ class TabletServer:
         return '', 400
     
     def retrieve_cell(self, table_name, args):
-        try:
-            args_dict = json.loads(args)
-        except ValueError:
-            return '', 400
+        # check existence of table
+        if not table_name in self.table_objs.keys():
+            return '', 404
+
+        if args != b'':
+            try:
+                args_dict = json.loads(args)
+            except ValueError:
+                return '', 400
 
         column_family = args_dict['column_family']
         column = args_dict['column']
         row = args_dict['row']
-
-        # check existence of table
-        if not table_name in self.table_objs:
-            return '', 404
 
         table = self.table_objs[table_name]
 
@@ -119,7 +122,6 @@ class TabletServer:
         table_structure = self.metadata['tables'][table_name]
         for cf in table_structure['column_families']:
             if cf['column_family_key'] == column_family and column in cf['columns']:
-                print('retrieving data!!!')
                 return table.get_a_cell(row, column_family, column), 200
 
         # column family or column not found
@@ -127,14 +129,16 @@ class TabletServer:
 
 
     def retrieve_cells(self, table_name, args):
-        try:
-            args_dict = json.loads(args)
-        except ValueError:
-            return '', 400
-
-        # check existence of table
-        if not table_name in self.table_objs:
+         # check existence of table
+        if not table_name in self.table_objs.keys():
             return '', 404
+
+        if args != b'':
+            try:
+                args_dict = json.loads(args)
+            except ValueError:
+                return '', 400
+
 
         column_family = args_dict['column_family']
         column = args_dict['column']
@@ -179,6 +183,7 @@ class Table:
     memindex = None
     metadata = None
     name = None
+    mem_unique_id = 0
 
     # metadata store commit log postion, sstable next name?
 
@@ -203,15 +208,14 @@ class Table:
         # 1. write wal
         # 2. append memtable and even do spilling
         write_table_wal(self.name, args_dict)
-        print(args_dict)
-        heappush(self.memtable, (args_dict['row'], args_dict))
+        heappush(self.memtable, (args_dict['row'], self.mem_unique_id, args_dict))
+        self.mem_unique_id += 1
         self.do_memtable_spill(max_mem_row)
 
 
     def get_a_cell(self, rowkey, column_family, column):
         sorted_memtable = nsmallest(len(self.memtable), self.memtable)
 
-        print('search in memtable')
         rowlist = []
         # binary search in memtable
         mem_start = self.binary_search_first_index(sorted_memtable, rowkey)
@@ -219,9 +223,6 @@ class Table:
         if mem_start != -1 and mem_end != -1:
             rowlist.extend(sorted_memtable[mem_start: mem_end + 1])
 
-
-
-        print('search in sstable')
         # binary search in sstable
         cell_sstables = self.memindex.get(rowkey, [])
         for s in cell_sstables:
@@ -230,11 +231,10 @@ class Table:
             ss_end = self.binary_search_last_index(ssdata, rowkey)
             rowlist.extend(ssdata[ss_start: ss_end + 1])
 
-        print('construct result')
         # construct result list
         resultset = []
         for row in rowlist:
-            row_data = row[1]
+            row_data = row[2]
             if row_data['column_family'] == column_family and row_data['column'] == column:
                 for val in row_data['data']:
                     heappush(resultset, (val['time'], val))
@@ -269,7 +269,7 @@ class Table:
         # get all needed cells
         resultset = {}
         for row in rowlist:
-            row_data = row[1]
+            row_data = row[2]
             if row_data['column_family'] == column_family and row_data['column'] == column:
                 for val in row_data['data']:
                     temp = resultset.get(row_data['row'], []) 
