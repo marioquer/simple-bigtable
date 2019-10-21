@@ -7,8 +7,12 @@ folder_path = os.path.dirname(os.path.realpath(__file__)) + '/files/'
 server_metadata_path = folder_path + 'metadata'
 
 def read_dict_from_file(filepath):
-    file = open(filepath, 'r')
-    return None if file == None else json.loads(file.read())
+    file = None
+    try:
+        file = open(filepath, 'r')
+    except FileNotFoundError:
+        return None
+    return json.loads(file.read())
 
 def write_dict_to_file(filepath, data_dict):
     file = open(filepath, 'w+')

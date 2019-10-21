@@ -188,8 +188,6 @@ class TabletServer:
         return '', 200
 
 
-
-
 class Table:
     memtable = None
     memindex = None
@@ -200,19 +198,29 @@ class Table:
     # metadata store commit log postion, sstable next name?
 
     def __init__(self, table_name):
-        # TODO: restore memtable and memindex
         self.name = table_name
         
-        # new
-        self.metadata = {
-            'next_sstable_index': 0,
-            'uncommited_wal_line': 0
-        }
-        self.memtable = []
-        self.memindex = {}
-        write_dict_to_table_file(table_name, 'metadata', self.metadata)
-        write_dict_to_table_file(table_name, 'ssindex', {})
-        write_dict_to_table_file(table_name, 'wal', [])
+        wal = read_dict_from_table_file(table_name, 'wal')
+        if wal != None:
+            # restore
+            self.metadata = read_dict_from_table_file(table_name, 'metadata')
+            start_index = self.metadata['uncommited_wal_line']
+            self.memtable = []
+            for data in wal[start_index: ]:
+                heappush(self.memtable, (data['row'], self.mem_unique_id, data))
+                self.mem_unique_id += 1
+            self.memindex = read_dict_from_table_file(table_name, 'ssindex')
+        else:
+            # new
+            self.metadata = {
+                'next_sstable_index': 0,
+                'uncommited_wal_line': 0
+            }
+            self.memtable = []
+            self.memindex = {}
+            write_dict_to_table_file(table_name, 'metadata', self.metadata)
+            write_dict_to_table_file(table_name, 'ssindex', {})
+            write_dict_to_table_file(table_name, 'wal', [])
 
 
     def write_cell(self, args_dict, max_mem_row):
@@ -243,22 +251,26 @@ class Table:
             ss_end = self.binary_search_last_index(ssdata, rowkey)
             rowlist.extend(ssdata[ss_start: ss_end + 1])
 
-        # construct result list
-        resultset = []
+        # construct result set without timestamp duplication
+        resultset = set()
         for row in rowlist:
             row_data = row[2]
             if row_data['column_family'] == column_family and row_data['column'] == column:
                 for val in row_data['data']:
-                    heappush(resultset, (val['time'], val))
+                    resultset.add((val['time'], val['value']))
+        
+        # get latest 5 versions
+        resultheap = []
+        for val in resultset:
+            heappush(resultheap, (val[0], {'time': val[0], 'value': val[1]}))
         result = []
-        for t in nlargest(5, resultset):
+        for t in nlargest(5, resultheap):
             result.append(t[1])
         
         return {
             'row': rowkey,
             'data': result
         }
-
 
     def get_cells(self, row_from, row_to, column_family, column):
         sorted_memtable = nsmallest(len(self.memtable), self.memtable)
@@ -279,20 +291,26 @@ class Table:
                 rowlist.extend(ssdata[ss_start: ss_end + 1])
 
         # get all needed cells
-        resultset = {}
+        resultset_map = {}
         for row in rowlist:
             row_data = row[2]
             if row_data['column_family'] == column_family and row_data['column'] == column:
                 for val in row_data['data']:
-                    temp = resultset.get(row_data['row'], []) 
-                    heappush(temp, (val['time'], val))
-                    resultset[row_data['row']] = temp
+                    temp = resultset_map.get(row_data['row'], set()) 
+                    temp.add((val['time'], val['value']))
+                    # heappush(temp, (val['time'], val))
+                    resultset_map[row_data['row']] = temp
 
         # shuffle into right row bucket and return
         result_row_list = []
-        for key in resultset.keys():
+        for key in resultset_map.keys():
+            # get lastest 5 versions of each cell
+            resultheap = []
+            for val in resultset_map[key]:
+                heappush(resultheap, (val[0], {'time': val[0], 'value': val[1]}))
+
             data_list = []
-            for t in nlargest(5, resultset[key]):
+            for t in nlargest(5, resultheap):
                 data_list.append(t[1])
             result_row_list.append({
                 'row': key,
