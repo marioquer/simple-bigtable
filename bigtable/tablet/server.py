@@ -98,7 +98,7 @@ class TabletServer:
         # column family or column not found
         return '', 400
     
-    def retreive_cell(self, table_name, args):
+    def retrieve_cell(self, table_name, args):
         try:
             args_dict = json.loads(args)
         except ValueError:
@@ -124,7 +124,7 @@ class TabletServer:
         return '', 400
 
 
-    def retreive_cells(self, table_name, args):
+    def retrieve_cells(self, table_name, args):
         try:
             args_dict = json.loads(args)
         except ValueError:
@@ -150,7 +150,7 @@ class TabletServer:
         
         
 
-    def retreive_row(self, table_name, row):
+    def retrieve_row(self, table_name, row):
         pass
 
     def set_memtable_max(self, max_value):
@@ -227,7 +227,45 @@ class Table:
     def get_cells(self, row_from, row_to, column_family, column):
         sorted_memtable = nsmallest(len(self.memtable), self.memtable)
 
-        
+        rowlist = []
+        # binary search in memtable
+        mem_start = self.binary_search_first_index(sorted_memtable, rowkey, True)
+        mem_end = self.binary_search_last_index(sorted_memtable, rowkey, True)
+        if mem_start != -1 and mem_end != -1:
+            rowlist.extend(sorted_memtable[mem_start, mem_end + 1])
+
+        # binary search in sstable
+        for i in range(self.metadata['next_sstable_index']):
+            ssdata = read_dict_from_table_file(self.name, 'sstable{}'.format(i))
+            ss_start = self.binary_search_first_index(ssdata, rowkey, True)
+            ss_end = self.binary_search_last_index(ssdata, rowkey, True)
+            if ss_start != -1 and ss_end != -1:
+                rowlist.extend(ssdata[ss_start, ss_end + 1])
+
+        # get all needed cells
+        resultset = {}
+        for row in rowlist:
+            row_data = row[1]
+            if row_data['column_family'] == column_family and row_data['column'] == column:
+                for val in row_data['data']:
+                    temp = resultset.get(row_data['row'], []) 
+                    heappush(temp, (val['time'], val))
+                    resultset[row_data['row']] = temp
+
+        # shuffle into right row bucket and return
+        result_row_list = []
+        for key in resultset.keys():
+            data_list = []
+            for t in nlargest(5, resultset[key]):
+                data_list.append(t[1])
+            result_row_list.append({
+                'row': key,
+                'data': data_list
+            })
+
+        return {
+            'rows': result_row_list
+        }
 
 
     def do_memtable_spill(self, max_mem_row):
@@ -249,31 +287,34 @@ class Table:
             write_dict_to_table_file(self.name, 'ssindex', self.memindex)
             # mark committed in wal
             self.metadata['uncommited_wal_line'] += max_mem_row
+            write_dict_to_table_file(self.name, 'metadata', self.metadata)
 
 
-    def binary_search_first_index(self, input_list, rowkey):
+    def binary_search_first_index(self, input_list, rowkey, larger=False):
         start = 0
         end = len(input_list) - 1
-        mid = (start + end) / 2
+        mid = (start + end) // 2
         index = -1
 
         while (start <= end):
             if rowkey < input_list[mid][0]:
+                if larger:
+                    index = mid
                 end = mid - 1
             elif rowkey == input_list[mid][0]:
                 end = mid - 1
                 index = mid
             else:
                 start = mid + 1
-            mid = (start + end) / 2
+            mid = (start + end) // 2
 
         return index
 
 
-    def binary_search_last_index(self, input_list, rowkey):
+    def binary_search_last_index(self, input_list, rowkey, smaller=False):
         start = 0
         end = len(input_list) - 1
-        mid = (start + end) / 2
+        mid = (start + end) // 2
         index = -1
 
         while (start <= end):
@@ -283,7 +324,9 @@ class Table:
                 end = mid + 1
                 index = mid
             else:
+                if smaller:
+                    index = mid
                 start = mid + 1
-            mid = (start + end) / 2
+            mid = (start + end) // 2
 
         return index

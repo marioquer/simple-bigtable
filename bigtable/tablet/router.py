@@ -38,9 +38,9 @@ def tables_info(pk):
 Row Operations
 '''
 @app.route('/api/table/<string:pk>/row', methods=['GET'])
-def row_retreive(pk):
+def row_retrieve(pk):
     # Retrieve a row
-    return tablet_server.retreive_row(pk, request.form['row'])
+    return tablet_server.retrieve_row(pk, request.form['row'])
 
 
 '''
@@ -53,7 +53,7 @@ def cell_ops(pk):
         return tablet_server.insert_cell(pk, request.data)
     else:
         # Retrieve a cell
-        return tablet_server.retreive_cell(pk, request.data)
+        return tablet_server.retrieve_cell(pk, request.data)
 
 
 '''
@@ -61,7 +61,7 @@ Retrieve cells
 '''
 @app.route('/api/table/<string:pk>/cells', methods=['GET'])
 def cells_retrieve(pk):
-    return tablet_server.retreive_cells(pk, request.form)
+    return tablet_server.retrieve_cells(pk, request.form)
 
 
 '''
