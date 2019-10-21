@@ -73,11 +73,11 @@ class TabletServer:
 
     def insert_cell(self, table_name, args):
         # check existence of table
-        print('{}, {}'.format(table_name, self.table_objs.keys()))
         if not table_name in self.table_objs.keys():
             return '', 404
 
         # check json format
+        args_dict = {}
         if args != b'':
             try:
                 args_dict = json.loads(args)
@@ -106,6 +106,7 @@ class TabletServer:
         if not table_name in self.table_objs.keys():
             return '', 404
 
+        args_dict = {}
         if args != b'':
             try:
                 args_dict = json.loads(args)
@@ -133,6 +134,7 @@ class TabletServer:
         if not table_name in self.table_objs.keys():
             return '', 404
 
+        args_dict = {}
         if args != b'':
             try:
                 args_dict = json.loads(args)
@@ -157,23 +159,33 @@ class TabletServer:
         return '', 400
         
         
-
     def retrieve_row(self, table_name, row):
         pass
 
-    def set_memtable_max(self, max_value):
-        # update max_mem_row of metadata
-        self.metadata['max_mem_row'] = max_value
+    def set_memtable_max(self, args):
+        
+        args_dict = {}
+        if args != b'':
+            try:
+                args_dict = json.loads(args)
+            except ValueError:
+                return '', 400
 
+        new_max_value = args_dict['memtable_max']
+
+        if not isinstance(new_max_value, int):
+            return '', 400
+
+        # update max_mem_row of metadata
+        self.metadata['max_mem_row'] = new_max_value
         # update server metadata in the disk
         write_server_metadata(self.metadata)
 
-        # check if update successfully
-        new_metadata = read_server_metadata()
-        if new_metadata['max_mem_row'] == max_value:
-            return '', 200
-        else:
-            return '', 500
+        # spill memtable
+        for table in self.metadata['tables'].keys():
+            self.table_objs[table].do_memtable_spill(new_max_value)
+
+        return '', 200
 
 
 

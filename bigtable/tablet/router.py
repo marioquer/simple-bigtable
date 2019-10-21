@@ -69,7 +69,7 @@ Set MemTable Max Entries
 '''
 @app.route('/api/memtable', methods=['POST'])
 def max_entries():
-    return tablet_server.set_memtable_max(request.form['memtable_max'])
+    return tablet_server.set_memtable_max(request.data)
 
 
 if __name__ == "__main__":
