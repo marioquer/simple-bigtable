@@ -26,6 +26,7 @@ class StressTests(unittest.TestCase):
 
     def test_populate_data(self):
         csv_file = os.path.join(os.getcwd(), "../dataset/movies.csv")
+        print(csv_file)
         self.assertTrue(os.path.exists(csv_file))
 
         lines = open(csv_file).read().splitlines()

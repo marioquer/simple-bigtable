@@ -1,6 +1,7 @@
 from flask import Flask, escape, request
-# from server import *
-from bigtable.tablet.server import *
+from server import *
+# from bigtable.tablet.server import *
+import sys
 
 
 app = Flask(__name__)
@@ -73,4 +74,4 @@ def max_entries():
 
 
 if __name__ == "__main__":
-    app.run(host='localhost', port='8000', threaded=False)
+    app.run(host=sys.argv[1], port=sys.argv[2], threaded=False)
