@@ -1,4 +1,4 @@
-#!/Users/marioquer/CMU/courses/14848/project/project2/starter/bigtable/venv/bin/python3.7
+#!/Users/marioquer/CMU/courses/14848/project/project2/simple-bigtable/bigtable/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys
