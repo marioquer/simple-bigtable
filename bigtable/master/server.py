@@ -11,7 +11,7 @@ class MasterServer:
         self.tablet_servers = {} # {tablet_server_id: {'hostname': '', 'port': ''} }
         self.current_tablet_server_id = 0 # round robin next server
 
-        # TODO: create_connection
+        # TODO: store tablet servers info into tablet_servers
 
 
     def list_tables(self):
@@ -34,21 +34,33 @@ class MasterServer:
         hostname = self.tablet_servers[self.current_tablet_server_id]['hostname']
         port = self.tablet_servers[self.current_tablet_server_id]['port']
 
-        # TODO: send request to tablet server
-        create_status = request_create_table(
+        # send request to tablet server for creating a new table
+        response = request_create_table(
             args, 
             hostname,
             port
         )
-       
-        self.table_locations[table_name] = self.current_tablet_server_id
-        # update current_tablet_server_id
-        self.current_tablet_server_id = (self.current_tablet_server_id + 1) % TABLET_SERVER_COUNT
 
-        return {
-                    'hostname': hostname,
-                    'port': port
-            }, 200
+        # check response
+        if response.status_code is 400:
+            self.logger.debug(
+                'create_table Failure - 400 returned from tablet server ' + str(self.current_tablet_server_id)
+            )
+            return '', 400
+        elif response.status_code is 409:
+            self.logger.debug(
+                'create_table Failure - 409 returned from tablet server ' + str(self.current_tablet_server_id)
+            )
+            return '', 409
+        else:
+            self.table_locations[table_name] = self.current_tablet_server_id
+            # update current_tablet_server_id
+            self.current_tablet_server_id = (self.current_tablet_server_id + 1) % TABLET_SERVER_COUNT
+
+            return {
+                        'hostname': hostname,
+                        'port': port
+                }, 200
     
     def delete_table(self, table_name):
         # table does not exist
@@ -62,19 +74,25 @@ class MasterServer:
         # Success - table not in use
         target_tablet_server_id = table_location[table_name]
 
-        # TODO: send request to tablet server
-        destroy_status = request_delete_table(
+        # send request to tablet server for deleting a table
+        response = request_delete_table(
             table_name, 
             self.tablet_servers[target_tablet_server_id]['hostname'],
             self.tablet_servers[target_tablet_server_id]['port']
         )
 
-        if destroy_status is False:
+        if response.status_code is 404:
             self.logger.debug(
-                'delete_table Failure - destroy_status false from tablet server ' + str(target_tablet_server_id)
+                'delete_table Failure - 404 returned from tablet server ' + str(target_tablet_server_id)
             )
-
-        return '', 200
+            return '', 404
+        elif response.status_code is 409:
+            self.logger.debug(
+                'delete_table Failure - 409 returned from tablet server ' + str(target_tablet_server_id)
+            )
+            return '', 409
+        else:
+            return '', 200
     
     def get_table_info(self, table_name):
         # table does not exist
@@ -85,8 +103,13 @@ class MasterServer:
         hostname = self.tablet_servers[target_tablet_server_id]['hostname']
         port = self.tablet_servers[target_tablet_server_id]['port']
 
-        # TODO: send request to tablet server to get table info
-        row_from, row_to = request_get_table_info(table_name, hostname, port)
+        # send request to tablet server for getting table info
+        response = request_get_table_info(table_name, hostname, port)
+        response_dict = response.json()
+
+        # TODO: modify table info in TabletServer
+        row_from = response_dict['row_from']
+        row_to = response_dict['row_to']
 
         return {
                     'name': table_name, 
