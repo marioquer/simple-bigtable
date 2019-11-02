@@ -27,6 +27,7 @@ class StressTests(unittest.TestCase):
     def test_populate_data(self):
         csv_file = os.path.join(os.getcwd(), "dataset/movies.csv")
         print(csv_file)
+
         self.assertTrue(os.path.exists(csv_file))
 
         lines = open(csv_file).read().splitlines()
@@ -55,6 +56,7 @@ class StressTests(unittest.TestCase):
                 'columns' : [col]
             })
 
+        print(table_dict)
         # create - success
         response = requests.post(url, json=table_dict)
         self.assertEqual(response.status_code, 200)
