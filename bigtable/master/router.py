@@ -1,6 +1,8 @@
 from flask import Flask, escape, request
-from server import *
 import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(__file__, '../../..')))
+from bigtable.master.server import *
 
 app = Flask(__name__)
 master_server = MasterServer()

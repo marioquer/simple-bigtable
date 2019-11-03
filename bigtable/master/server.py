@@ -1,4 +1,7 @@
-from helpers import *
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(__file__, '../../..')))
+from bigtable.master.helpers import *
 import logging
 
 class MasterServer:
@@ -23,7 +26,8 @@ class MasterServer:
         port = str(args_dict['port'])
 
         # update tablet server info
-        self.tablet_servers[self.tablet_server_count] = {
+        tablet_server_id = self.tablet_server_count
+        self.tablet_servers[tablet_server_id] = {
             'hostname': hostname,
             'port': port
         }
@@ -31,7 +35,9 @@ class MasterServer:
         # update tablet_server_count
         self.tablet_server_count += 1
         
-        return '', 200
+        return {
+            'tablet_server_id': tablet_server_id
+        }, 200
 
     def list_tables(self):
         return {

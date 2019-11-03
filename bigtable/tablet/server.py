@@ -13,6 +13,9 @@ class TabletServer:
     # metadata should be stored as file
     metadata = None
     table_objs = {}
+    tablet_server_id = None
+    server_folder_path = ''
+    server_metadata_path = ''
 
     def __init__(self, cmd_argv):
         # send tablet server info to master
@@ -27,20 +30,29 @@ class TabletServer:
             }
             
         url = "http://" + master_hostname + ":" + master_port + "/api/tabletservers"
-        response = requests.post(url, json=params) 
+        response = requests.post(url, json=params)
+
+        self.tablet_server_id = response.json()['tablet_server_id']
+        self.server_folder_path = '{}{}'.format(helpers.FILE_FOLDER_PATH, 'server' + self.tablet_server_id)
+        self.server_metadata_path = '{}/{}'.format(self.server_folder_path, 'metadata')
 
         # do recovery
-        if not os.path.isfile(helpers.SERVER_METADATA_PATH):
+        # TODO: recover all tablets
+        if not os.path.isfile(self.server_metadata_path):
             self.metadata = {
                 'max_mem_row': 100,
                 'tables': {}
             }
-            helpers.write_server_metadata(self.metadata)
+            try:
+                os.makedirs(self.server_folder_path)
+            except OSError:
+                print ("Creation of the directory %s failed" % self.server_folder_path)
+            helpers.write_server_metadata(self.server_metadata_path, self.metadata)
         else:
-            self.metadata = helpers.read_server_metadata()
-            # restore all table objs
+            self.metadata = helpers.read_server_metadata(self.server_metadata_path)
+            # TODO: restore all tablets objs
             for key in self.metadata['tables'].keys():
-                self.table_objs[key] = Table(key)
+                self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0')
 
     def list_tables(self):
         return {
@@ -62,15 +74,15 @@ class TabletServer:
 
         # add to dict and save to disk
         self.metadata['tables'][table_name] = args_dict
-        helpers.write_server_metadata(self.metadata)
+        helpers.write_server_metadata(self.server_metadata_path, self.metadata)
         try:
-            table_dir_path = helpers.FILE_FOLDER_PATH + table_name
-            os.mkdir(table_dir_path)
+            tablet_dir_path = '{}/{}/{}'.format(self.server_folder_path, table_name, table_name + '0')
+            os.makedirs(tablet_dir_path)
         except OSError:
-            print ("Creation of the directory %s failed" % table_dir_path)        
+            print ("Creation of the directory %s failed" % tablet_dir_path)        
         
-        # create new Table obj and add to map
-        self.table_objs[table_name] = Table(table_name)
+        # create new Table obj and add to map TODO: tablet obj update
+        self.table_objs[table_name] = Tablet(self.server_folder_path, table_name, table_name + '0')
 
         return '', 200
 
@@ -81,12 +93,12 @@ class TabletServer:
 
         # delete from metadata
         self.metadata['tables'].pop(table_name, None)
-        helpers.write_server_metadata(self.metadata)
+        helpers.write_server_metadata(self.server_metadata_path, self.metadata)
         # delete from Table obj list
         self.table_objs.pop(table_name, None)
 
         # delete folder
-        shutil.rmtree(helpers.FILE_FOLDER_PATH + table_name) 
+        shutil.rmtree('{}/{}'.format(self.server_folder_path, table_name))
         return '', 200
 
         # 409 for checkpoint2
@@ -204,7 +216,7 @@ class TabletServer:
         # update max_mem_row of metadata
         self.metadata['max_mem_row'] = new_max_value
         # update server metadata in the disk
-        helpers.write_server_metadata(self.metadata)
+        helpers.write_server_metadata(self.server_metadata_path, self.metadata)
 
         # spill memtable
         for table in self.metadata['tables'].keys():
@@ -213,28 +225,34 @@ class TabletServer:
         return '', 200
 
 
-class Table:
+class Tablet:
     memtable = None
     memindex = None
     metadata = None
-    name = None
+    table_name = ''
+    tablet_name = ''
     mem_unique_id = 0
+    tablet_folder_path = ''
+    server_folder_path = ''
 
     # metadata store commit log postion, sstable next name?
 
-    def __init__(self, table_name):
-        self.name = table_name
+    def __init__(self, server_folder_path, table_name, tablet_name):
+        self.table_name = table_name
+        self.tablet_name = tablet_name
+        self.server_folder_path = server_folder_path
+        self.tablet_folder_path = '{}/{}/{}'.format(server_folder_path, table_name, tablet_name)
         
-        wal = helpers.read_dict_from_table_file(table_name, 'wal')
+        wal = helpers.read_dict_from_table_file(server_folder_path, table_name, tablet_name, 'wal')
         if wal != None:
             # restore
-            self.metadata = helpers.read_dict_from_table_file(table_name, 'metadata')
+            self.metadata = helpers.read_dict_from_table_file(server_folder_path, table_name, tablet_name, 'metadata')
             start_index = self.metadata['uncommited_wal_line']
             self.memtable = []
             for data in wal[start_index: ]:
                 heapq.heappush(self.memtable, (data['row'], self.mem_unique_id, data))
                 self.mem_unique_id += 1
-            self.memindex = helpers.read_dict_from_table_file(table_name, 'ssindex')
+            self.memindex = helpers.read_dict_from_table_file(server_folder_path, table_name, tablet_name, 'ssindex')
         else:
             # new
             self.metadata = {
@@ -243,16 +261,16 @@ class Table:
             }
             self.memtable = []
             self.memindex = {}
-            helpers.write_dict_to_table_file(table_name, 'metadata', self.metadata)
-            helpers.write_dict_to_table_file(table_name, 'ssindex', {})
-            helpers.write_dict_to_table_file(table_name, 'wal', [])
+            helpers.write_dict_to_table_file(server_folder_path, table_name, tablet_name, 'metadata', self.metadata)
+            helpers.write_dict_to_table_file(server_folder_path, table_name, tablet_name, 'ssindex', {})
+            helpers.write_dict_to_table_file(server_folder_path, table_name, tablet_name, 'wal', [])
 
 
     def write_cell(self, args_dict, max_mem_row):
         # do insert
         # 1. write wal
         # 2. append memtable and even do spilling
-        helpers.write_table_wal(self.name, args_dict)
+        helpers.write_table_wal(self.server_folder_path, self.table_name, self.tablet_name, args_dict)
         heapq.heappush(self.memtable, (args_dict['row'], self.mem_unique_id, args_dict))
         self.mem_unique_id += 1
         self.do_memtable_spill(max_mem_row)
@@ -271,7 +289,7 @@ class Table:
         # binary search in sstable
         cell_sstables = self.memindex.get(rowkey, [])
         for s in cell_sstables:
-            ssdata = helpers.read_dict_from_table_file(self.name, s)
+            ssdata = helpers.read_dict_from_table_file(self.server_folder_path, self.table_name, self.tablet_name, s)
             ss_start = self.binary_search_first_index(ssdata, rowkey)
             ss_end = self.binary_search_last_index(ssdata, rowkey)
             rowlist.extend(ssdata[ss_start: ss_end + 1])
@@ -309,7 +327,7 @@ class Table:
 
         # binary search in sstable
         for i in range(self.metadata['next_sstable_index']):
-            ssdata = helpers.read_dict_from_table_file(self.name, 'sstable{}'.format(i))
+            ssdata = helpers.read_dict_from_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'sstable{}'.format(i))
             ss_start = self.binary_search_first_index(ssdata, row_from, True)
             ss_end = self.binary_search_last_index(ssdata, row_to, True)
             if ss_start != -1 and ss_end != -1:
@@ -355,7 +373,7 @@ class Table:
             self.memtable = self.memtable[max_mem_row:]
             # store sstable with sorted key
             sstable_name = 'sstable{}'.format(self.metadata['next_sstable_index'])
-            helpers.write_dict_to_table_file(self.name, sstable_name, heapq.nsmallest(max_mem_row, sstable_data))
+            helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, sstable_name, heapq.nsmallest(max_mem_row, sstable_data))
             self.metadata['next_sstable_index'] += 1
             # construct in-memory index
             for t in sstable_data:
@@ -363,10 +381,10 @@ class Table:
                 key_list.append(sstable_name)
                 self.memindex[t[0]] = key_list
             # store ssindex
-            helpers.write_dict_to_table_file(self.name, 'ssindex', self.memindex)
+            helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'ssindex', self.memindex)
             # mark committed in wal
             self.metadata['uncommited_wal_line'] += max_mem_row
-            helpers.write_dict_to_table_file(self.name, 'metadata', self.metadata)
+            helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'metadata', self.metadata)
 
 
     def binary_search_first_index(self, input_list, rowkey, larger=False):
