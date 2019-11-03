@@ -1,5 +1,6 @@
 from helpers import *
 # from bigtable.tablet.helpers import *
+import logging
 
 class TabletServer:
     # metadata should be stored as file
@@ -7,6 +8,21 @@ class TabletServer:
     table_objs = {}
 
     def __init__(self, *args, **kwargs):
+        # send tablet server info to master
+        tablet_hostname = args[1]
+        tablet_port = args[2]
+        master_hostname = args[3]
+        master_port = args[4]
+
+        params = json.dumps(
+            {
+                'hostname': tablet_hostname, 
+                'port': tablet_port
+            }
+        )
+        url = "http://" + master_hostname + ":" + master_port + "/api/tabletservers"
+        response = requests.post(url = url, params = args) 
+
         # do recovery
         if not os.path.isfile(server_metadata_path):
             self.metadata = {

@@ -9,6 +9,15 @@ master_server = MasterServer()
 '''
 Table Operations
 '''
+@app.route('/api/tabletservers', methods=['POST'])
+def get_tablet_server_info():
+    # get tablet server info from a tablet
+    return master_server.get_tablet_server_info(request.data)
+
+
+'''
+Table Operations
+'''
 @app.route('/api/tables', methods=['GET', 'POST'])
 def tables_ops():
     if request.method == 'POST':

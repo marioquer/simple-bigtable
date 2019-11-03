@@ -1,16 +1,7 @@
 import json
 import requests
 
-TABLET_SERVER_COUNT = 2
-TABLET_SERVER_1 = {
-    "hostname": "hostname",
-    "port": "port"
-} 
-TABLET_SERVER_2 = {
-    "hostname": "hostname",
-    "port": "port"
-} 
-TABLET_SERVERS = [TABLET_SERVER_1, TABLET_SERVER_2]
+SHARDING_ROW_THRESHOLD = 1000
 
 def request_create_table(args, hostname, port):
     '''

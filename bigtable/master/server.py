@@ -8,12 +8,30 @@ class MasterServer:
         self.open_tables = {}  # {'table_name': 'client_id'}
         self.table_locations = {}  # {'table_name': [tablet_server_id]}
         self.current_tablet_server_id = 0 # round robin: next server
+        self.tablet_server_count = 0 # updated when a new tablet server integrated
 
         # tablet servers info: {tablet_server_id: {'hostname': '', 'port': ''} }
-        self.tablet_servers = {
-            0: TABLET_SERVERS[0],
-            1: TABLET_SERVERS[1]
+        self.tablet_servers = {}
+
+    def get_tablet_server_info(self, args):
+        try:
+            args_dict = json.loads(args)
+        except ValueError:
+            return '', 400
+
+        hostname = args_dict['hostname']
+        port = args_dict['port']
+
+        # update tablet server info
+        self.tablet_servers[self.tablet_server_count] = {
+            'hostname': hostname,
+            'port': port
         }
+
+        # update tablet_server_count
+        self.tablet_server_count += 1
+        
+        return '', 200
 
     def list_tables(self):
         return {
