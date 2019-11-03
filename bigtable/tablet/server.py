@@ -43,6 +43,8 @@ class TabletServer:
     def create_table(self, args):
         try:
             args_dict = json.loads(args)
+            print("----------------------")
+            print(args_dict)
         except ValueError:
             return '', 400
 

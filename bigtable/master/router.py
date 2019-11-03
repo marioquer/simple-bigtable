@@ -11,8 +11,8 @@ Table Operations
 '''
 @app.route('/api/tabletservers', methods=['POST'])
 def get_tablet_server_info():
-    # get tablet server info from a tablet
-    return master_server.get_tablet_server_info(request.data)
+    # register tablet server
+    return master_server.register_tablet_server(request.data)
 
 
 '''
@@ -46,14 +46,14 @@ Allow a client to begin using an exisiting table
 '''
 @app.route('/api/lock/<string:pk>', methods=['POST'])
 def open_table(pk):
-    return master_server.open_table(pk)
+    return master_server.open_table(pk, request.data)
 
 '''
 Relinquishes a table
 '''
 @app.route('/api/lock/<string:pk>', methods=['DELETE'])
 def close_table(pk):
-    return master_server.close_table(pk)
+    return master_server.close_table(pk, request.data)
 
 if __name__ == "__main__":
     app.run(host=sys.argv[1], port=sys.argv[2], threaded=False)

@@ -5,7 +5,7 @@ class MasterServer:
     def __init__(self, *args, **kwargs):
         self.logger = logging.getLogger('MasterServer')
         self.logger.setLevel(logging.DEBUG)
-        self.open_tables = {}  # {'table_name': 'client_id'}
+        self.open_tables = {}  # {'table_name': ['client_id']}
         self.table_locations = {}  # {'table_name': [tablet_server_id]}
         self.current_tablet_server_id = 0 # round robin: next server
         self.tablet_server_count = 0 # updated when a new tablet server integrated
@@ -13,14 +13,14 @@ class MasterServer:
         # tablet servers info: {tablet_server_id: {'hostname': '', 'port': ''} }
         self.tablet_servers = {}
 
-    def get_tablet_server_info(self, args):
+    def register_tablet_server(self, args):
         try:
             args_dict = json.loads(args)
         except ValueError:
             return '', 400
 
         hostname = args_dict['hostname']
-        port = args_dict['port']
+        port = str(args_dict['port'])
 
         # update tablet server info
         self.tablet_servers[self.tablet_server_count] = {
@@ -50,12 +50,16 @@ class MasterServer:
         if table_name in self.table_locations.keys():
             return '', 409
 
+        if self.current_tablet_server_id > self.tablet_server_count or \
+            self.current_tablet_server_id == self.tablet_server_count:
+            self.current_tablet_server_id = 0
+        
         hostname = self.tablet_servers[self.current_tablet_server_id]['hostname']
         port = self.tablet_servers[self.current_tablet_server_id]['port']
 
         # send request to tablet server for creating a new table
         response = request_create_table(
-            args, 
+            args_dict, 
             hostname,
             port
         )
@@ -74,7 +78,7 @@ class MasterServer:
         else:
             self.table_locations[table_name] = [self.current_tablet_server_id]
             # update current_tablet_server_id
-            self.current_tablet_server_id = (self.current_tablet_server_id + 1) % TABLET_SERVER_COUNT
+            self.current_tablet_server_id = (self.current_tablet_server_id + 1) % self.tablet_server_count
 
             return {
                         'hostname': hostname,
@@ -90,32 +94,40 @@ class MasterServer:
         if table_name in self.open_tables.keys():
             return '', 409
         
+        has_404 = False
+        has_409 = False
+
         # Success - table not in use
-        target_tablet_server_id = table_location[table_name]
-
-        # send request to tablet server for deleting a table
-        response = request_delete_table(
-            table_name, 
-            self.tablet_servers[target_tablet_server_id]['hostname'],
-            self.tablet_servers[target_tablet_server_id]['port']
-        )
-
-        if response.status_code is 404:
-            self.logger.debug(
-                'delete_table Failure - 404 returned from tablet server ' + str(target_tablet_server_id)
+        for target_tablet_server_id in self.table_locations[table_name]:
+            # send request to tablet server for deleting a table
+            response = request_delete_table(
+                table_name, 
+                self.tablet_servers[target_tablet_server_id]['hostname'],
+                self.tablet_servers[target_tablet_server_id]['port']
             )
+            if response.status_code is 404:
+                has_404 = True
+                self.logger.debug(
+                    'delete_table Failure - 404 returned from tablet server ' + str(target_tablet_server_id)
+                )
+                
+            elif response.status_code is 409:
+                has_409 = True
+                self.logger.debug(
+                    'delete_table Failure - 409 returned from tablet server ' + str(target_tablet_server_id)
+                )
+
+        if has_404 is True:
             return '', 404
-        elif response.status_code is 409:
-            self.logger.debug(
-                'delete_table Failure - 409 returned from tablet server ' + str(target_tablet_server_id)
-            )
+        elif has_409 is True:
             return '', 409
         else:
+            self.table_locations.pop(table_name, None)
             return '', 200
     
     def get_table_info(self, table_name):
         # table does not exist
-        if not table_name in self.table_locations.keys:
+        if not table_name in self.table_locations.keys():
             return '', 404
 
         for target_tablet_server_id in self.table_locations[table_name]:
@@ -126,7 +138,7 @@ class MasterServer:
             response = request_get_table_info(table_name, hostname, port)
 
             # not found on this tablet server
-            if reponse.status_code is 404:
+            if response.status_code is 404:
                 continue
             # found on this tablet server
             else:
@@ -134,8 +146,10 @@ class MasterServer:
                 break
 
         # TODO: modify table info in TabletServer
-        row_from = response_dict['row_from']
-        row_to = response_dict['row_to']
+        # row_from = response_dict['row_from']
+        # row_to = response_dict['row_to']
+        row_from = 'a'
+        row_to = 'z'
 
         return {
                     'name': table_name, 
@@ -150,42 +164,46 @@ class MasterServer:
                 }, 200
 
     def open_table(self, table_name, args):
+        args_dict = json.loads(args)
+       
         # Table does not exist.
-        if table.name not in self.table_locations.keys():
+        if table_name not in self.table_locations.keys():
             return '', 404
 
         # Client already opened the table.
-        if table_name in self.open_tables.keys():
-            return '', 400
-
-        try:
-            args_dict = json.loads(args)
-        except ValueError:
+        if table_name in self.open_tables.keys() and \
+            args_dict['client_id'] in self.open_tables[table_name]:
             return '', 400
 
         # Open success
-        self.open_tables[table_name] = args_dict['client_id']
+        if table_name not in self.open_tables.keys():
+            self.open_tables[table_name] = [args_dict['client_id']]
+        else:
+            self.open_tables[table_name].append(args_dict['client_id'])
+
         return '', 200
 
     def close_table(self, table_name, args):
+        args_dict = json.loads(args)
+        
         # Table does not exist.
-        if table.name not in self.table_locations.keys():
+        if table_name not in self.table_locations.keys():
             return '', 404
 
         # Client not opened the table.
         if table_name not in self.open_tables.keys():
             return '', 400
 
-        try:
-            args_dict = json.loads(args)
-        except ValueError:
+        if table_name in self.open_tables.keys() and \
+            args_dict['client_id'] not in self.open_tables[table_name]:
             return '', 400
+    
+        # Close success
+        self.open_tables[table_name].remove(args_dict['client_id'])
 
-        if self.open_tables[table_name] is not args_dict['client_id']:
-            return '', 400
+        if len(self.open_tables[table_name]) is 0:
+            self.open_tables.pop(table_name, None)
 
-        # Open success
-        self.open_tables[table_name].pop(table_name, None)
         return '', 200
     
     def sharding_tables(self):

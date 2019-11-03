@@ -1,7 +1,7 @@
 import json
 import os
 import shutil
-import requests
+import requests.__version__
 from heapq import *
 
 folder_path = os.path.dirname(os.path.realpath(__file__)) + '/files/'
