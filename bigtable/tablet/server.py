@@ -7,21 +7,20 @@ class TabletServer:
     metadata = None
     table_objs = {}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, cmd_argv):
         # send tablet server info to master
-        tablet_hostname = args[1]
-        tablet_port = args[2]
-        master_hostname = args[3]
-        master_port = args[4]
+        tablet_hostname = cmd_argv[1]
+        tablet_port = cmd_argv[2]
+        master_hostname = cmd_argv[3]
+        master_port = cmd_argv[4]
 
-        params = json.dumps(
-            {
+        params = {
                 'hostname': tablet_hostname, 
                 'port': tablet_port
             }
-        )
+            
         url = "http://" + master_hostname + ":" + master_port + "/api/tabletservers"
-        response = requests.post(url = url, params = args) 
+        response = requests.post(url, json=params) 
 
         # do recovery
         if not os.path.isfile(server_metadata_path):

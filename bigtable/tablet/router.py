@@ -5,7 +5,7 @@ import sys
 
 
 app = Flask(__name__)
-tablet_server = TabletServer()
+tablet_server = TabletServer(sys.argv)
 
 '''
 Table Operations
