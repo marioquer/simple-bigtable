@@ -2,7 +2,7 @@ from flask import Flask, escape, request
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath(os.path.join(__file__, '../../..')))
 from bigtable.tablet import server
 
 
