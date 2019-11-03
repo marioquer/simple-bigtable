@@ -1,11 +1,13 @@
 from flask import Flask, escape, request
-from server import *
-# from bigtable.tablet.server import *
+import os
 import sys
+
+sys.path.insert(0, os.path.abspath('..'))
+from bigtable.tablet import server
 
 
 app = Flask(__name__)
-tablet_server = TabletServer(sys.argv)
+tablet_server = server.TabletServer(sys.argv)
 
 '''
 Table Operations
