@@ -2,17 +2,18 @@ from helpers import *
 import logging
 
 class MasterServer:
-
     def __init__(self, *args, **kwargs):
         self.logger = logging.getLogger('MasterServer')
         self.logger.setLevel(logging.DEBUG)
         self.open_tables = {}  # {'table_name': 'client_id'}
-        self.table_locations = {}  # {'table_name': tablet_server_id}
-        self.tablet_servers = {} # {tablet_server_id: {'hostname': '', 'port': ''} }
-        self.current_tablet_server_id = 0 # round robin next server
+        self.table_locations = {}  # {'table_name': [tablet_server_id]}
+        self.current_tablet_server_id = 0 # round robin: next server
 
-        # TODO: store tablet servers info into tablet_servers
-
+        # tablet servers info: {tablet_server_id: {'hostname': '', 'port': ''} }
+        self.tablet_servers = {
+            0: TABLET_SERVERS[0],
+            1: TABLET_SERVERS[1]
+        }
 
     def list_tables(self):
         return {
@@ -27,7 +28,7 @@ class MasterServer:
 
         table_name = args_dict['name']
 
-        # exist
+        # table already exists
         if table_name in self.table_locations.keys():
             return '', 409
 
@@ -53,7 +54,7 @@ class MasterServer:
             )
             return '', 409
         else:
-            self.table_locations[table_name] = self.current_tablet_server_id
+            self.table_locations[table_name] = [self.current_tablet_server_id]
             # update current_tablet_server_id
             self.current_tablet_server_id = (self.current_tablet_server_id + 1) % TABLET_SERVER_COUNT
 
@@ -99,13 +100,20 @@ class MasterServer:
         if not table_name in self.table_locations.keys:
             return '', 404
 
-        target_tablet_server_id = self.table_locations[table_name]
-        hostname = self.tablet_servers[target_tablet_server_id]['hostname']
-        port = self.tablet_servers[target_tablet_server_id]['port']
+        for target_tablet_server_id in self.table_locations[table_name]:
+            hostname = self.tablet_servers[target_tablet_server_id]['hostname']
+            port = self.tablet_servers[target_tablet_server_id]['port']
 
-        # send request to tablet server for getting table info
-        response = request_get_table_info(table_name, hostname, port)
-        response_dict = response.json()
+            # send request to tablet server for getting table info
+            response = request_get_table_info(table_name, hostname, port)
+
+            # not found on this tablet server
+            if reponse.status_code is 404:
+                continue
+            # found on this tablet server
+            else:
+                response_dict = response.json()
+                break
 
         # TODO: modify table info in TabletServer
         row_from = response_dict['row_from']
@@ -161,3 +169,6 @@ class MasterServer:
         # Open success
         self.open_tables[table_name].pop(table_name, None)
         return '', 200
+    
+    def sharding_tables(self):
+        pass

@@ -46,3 +46,5 @@ Relinquishes a table
 def close_table(pk):
     return master_server.close_table(pk)
 
+if __name__ == "__main__":
+    app.run(host=sys.argv[1], port=sys.argv[2], threaded=False)
