@@ -130,6 +130,7 @@ class MasterServer:
         if not table_name in self.table_locations.keys():
             return '', 404
 
+        tablets = []
         for target_tablet_server_id in self.table_locations[table_name]:
             hostname = self.tablet_servers[target_tablet_server_id]['hostname']
             port = self.tablet_servers[target_tablet_server_id]['port']
@@ -143,24 +144,22 @@ class MasterServer:
             # found on this tablet server
             else:
                 response_dict = response.json()
-                break
-
-        # TODO: modify table info in TabletServer
-        # row_from = response_dict['row_from']
-        # row_to = response_dict['row_to']
-        row_from = 'a'
-        row_to = 'z'
+                # row_from = response_dict['row_from']
+                # row_to = response_dict['row_to']
+                row_from = 'a'
+                row_to = 'z'
+                tablets.append(
+                    {
+                        "hostname": hostname,
+                        "port": port,
+                        "row_from": row_from,
+                        "row_to": row_to
+                    }
+                )
 
         return {
                     'name': table_name, 
-                    'tablets': [
-                        {
-                            "hostname": hostname,
-                            "port": port,
-                            "row_from": row_from,
-                            "row_to": row_to
-                        }
-                    ]
+                    'tablets': tablets
                 }, 200
 
     def open_table(self, table_name, args):
