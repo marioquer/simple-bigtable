@@ -19,17 +19,23 @@ class TabletServer:
 
     def __init__(self, cmd_argv):
         # send tablet server info to master
-        tablet_hostname = cmd_argv[1]
-        tablet_port = cmd_argv[2]
-        master_hostname = cmd_argv[3]
-        master_port = cmd_argv[4]
+        self.tablet_hostname = cmd_argv[1]
+        self.tablet_port = cmd_argv[2]
+        self.master_hostname = cmd_argv[3]
+        self.master_port = cmd_argv[4]
+
+        self.server_info = {
+            'master_hostname': self.master_hostname,
+            'master_port': self.master_port,
+            'tablet_server_id': self.tablet_server_id
+        }
 
         params = {
-                'hostname': tablet_hostname, 
-                'port': tablet_port
+                'hostname': self.tablet_hostname, 
+                'port': self.tablet_port
             }
             
-        url = "http://" + master_hostname + ":" + master_port + "/api/tabletservers"
+        url = "http://" + self.master_hostname + ":" + self.master_port + "/api/tabletservers"
         response = requests.post(url, json=params)
 
         self.tablet_server_id = response.json()['tablet_server_id']
@@ -54,7 +60,7 @@ class TabletServer:
     def restore_tablet_server(self):
         self.metadata = helpers.read_server_metadata(self.server_metadata_path)
         for key in self.metadata['tables'].keys():
-            self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0')
+            self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0', self.master_info)
         return '', 200
 
     def check_tablet_server_status(self):
@@ -87,7 +93,7 @@ class TabletServer:
             print ("Creation of the directory %s failed" % tablet_dir_path)        
         
         # create new Table obj and add to map TODO: tablet obj update
-        self.table_objs[table_name] = Tablet(self.server_folder_path, table_name, table_name + '0')
+        self.table_objs[table_name] = Tablet(self.server_folder_path, table_name, table_name + '0', self.master_info)
 
         return '', 200
 
@@ -229,6 +235,13 @@ class TabletServer:
 
         return '', 200
 
+    def receive_shard(self, args):
+        table_name = args['table_name']
+        # TODO: update table_obj
+        # TODO: save sstable, restore ssindex and memindex, update metadata
+        return '', 200
+
+
 
 class Tablet:
     memtable = None
@@ -238,15 +251,18 @@ class Tablet:
     table_name = ''
     tablet_name = ''
     mem_unique_id = 0
+    tablet_max_limit = 1000
     tablet_folder_path = ''
     server_folder_path = ''
+    
 
-    def __init__(self, server_folder_path, table_name, tablet_name):
+    def __init__(self, server_folder_path, table_name, tablet_name, server_info):
         self.mem_rowkey_set = set()
         self.table_name = table_name
         self.tablet_name = tablet_name
         self.server_folder_path = server_folder_path
         self.tablet_folder_path = '{}/{}/{}'.format(server_folder_path, table_name, tablet_name)
+        self.server_info = server_info
         
         wal = helpers.read_dict_from_table_file(server_folder_path, table_name, tablet_name, 'wal')
         if wal != None:
@@ -299,6 +315,7 @@ class Tablet:
         self.metadata['row_to'] = row_to
         helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'metadata', self.metadata)
         self.do_memtable_spill(max_mem_row)
+        self.do_sharding()
 
 
     def get_a_cell(self, rowkey, column_family, column):
@@ -414,6 +431,27 @@ class Tablet:
             # mark committed in wal
             self.metadata['uncommited_wal_line'] += (memtable_len - 1)
             helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'metadata', self.metadata)
+
+
+    def do_sharding(self):
+        row_set = set(self.metadata['rowkey_set'])
+        row_set_len = len(row_set)
+        if row_set_len == self.tablet_max_limit:
+            # TODO: do sharding
+            request_sharding_url = "http://{}:{}/api/sharding".format(self.server_info['master_hostname'], self.server_info['master_port'])
+            data = {
+                'table_name': self.table_name,
+                'server_id': self.server_info['tablet_server_id']
+            }
+            response_dict = requests.post(request_sharding_url, json=data).json()
+
+            # TODO: get data from sstable
+            ssdata = {}
+            sharding_url = "http://{}:{}/api/sendshard".format(response_dict['target_host'], response_dict['target_port'])
+            response = requests.post(sharding_url, json=ssdata)
+            # TODO: update metadata
+            
+
 
 
     def binary_search_first_index(self, input_list, rowkey, larger=False):

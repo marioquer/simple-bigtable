@@ -92,5 +92,14 @@ def max_entries():
     return tablet_server.set_memtable_max(request.data)
 
 
+'''
+Receive Sharding
+'''
+@app.route('/api/sendshard', methods=['POST'])
+def send_shard():
+    return tablet_server.receive_shard(request.data)
+
+
+
 if __name__ == "__main__":
     app.run(host=sys.argv[1], port=sys.argv[2], threaded=False)
