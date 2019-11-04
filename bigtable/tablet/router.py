@@ -7,7 +7,7 @@ from bigtable.tablet import server
 
 
 app = Flask(__name__)
-tablet_server = server.TabletServer(sys.argv)
+tablet_server = None
 
 '''
 Restore Tablet Server
@@ -23,7 +23,6 @@ Check Tablet Server status
 @app.route('/api/tabletstatus', methods=['GET'])
 def check_tablet_server_status():
     # check tablet server status
-    print('router: check tablet server status')
     return tablet_server.check_tablet_server_status()
 
 '''
@@ -102,4 +101,5 @@ def send_shard():
 
 
 if __name__ == "__main__":
+    tablet_server = server.TabletServer(sys.argv)
     app.run(host=sys.argv[1], port=sys.argv[2], threaded=False)
