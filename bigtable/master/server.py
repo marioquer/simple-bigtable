@@ -20,11 +20,9 @@ class MasterServer:
         self.tablet_servers = {}
 
     def check_single_tablet_server_status(self, tablet_server_id, hostname, port):
-        print('------------------------')
-        print(hostname)
-        print(port)
+        time.sleep(2)
         response = check_single_tablet_server_status_helper(hostname, port)
-        print('status_code: ' + str(response))
+        
         # While tablet server is running
         while response is 200:
             time.sleep(2)
@@ -48,6 +46,12 @@ class MasterServer:
             self.tablet_servers[target_tablet_server_id]['hostname'],
             self.tablet_servers[target_tablet_server_id]['port']
         )
+
+        for table_name in self.table_locations.keys():
+            if tablet_server_id in self.table_locations[table_name]:
+                self.table_locations[table_name].remove(tablet_server_id)
+                self.table_locations[table_name].append(target_tablet_server_id)
+        
 
     def register_tablet_server(self, args):
         try:
@@ -198,6 +202,7 @@ class MasterServer:
             # found on this tablet server
             else:
                 response_dict = response.json()
+                # TODO: change row_from & row_to
                 # row_from = response_dict['row_from']
                 # row_to = response_dict['row_to']
                 row_from = 'a'
