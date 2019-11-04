@@ -37,7 +37,6 @@ class TabletServer:
         self.server_metadata_path = '{}/{}'.format(self.server_folder_path, 'metadata')
 
         # do recovery
-        # TODO: recover all tablets
         if not os.path.isfile(self.server_metadata_path):
             self.metadata = {
                 'max_mem_row': 100,
@@ -49,10 +48,15 @@ class TabletServer:
                 print ("Creation of the directory %s failed" % self.server_folder_path)
             helpers.write_server_metadata(self.server_metadata_path, self.metadata)
         else:
-            self.metadata = helpers.read_server_metadata(self.server_metadata_path)
-            # TODO: restore all tablets objs
-            for key in self.metadata['tables'].keys():
-                self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0')
+            self.restore_tablet_server()
+
+
+    def restore_tablet_server(self):
+        self.metadata = helpers.read_server_metadata(self.server_metadata_path)
+        for key in self.metadata['tables'].keys():
+            self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0')
+        return '', 200
+
 
     def check_tablet_server_status(self):
         return '', 200
@@ -237,8 +241,6 @@ class Tablet:
     tablet_folder_path = ''
     server_folder_path = ''
 
-    # metadata store commit log postion, sstable next name?
-
     def __init__(self, server_folder_path, table_name, tablet_name):
         self.mem_rowkey_set = set()
         self.table_name = table_name
@@ -253,6 +255,7 @@ class Tablet:
             start_index = self.metadata['uncommited_wal_line']
             self.memtable = []
             for data in wal[start_index: ]:
+                self.mem_rowkey_set.add(data['row'])
                 heapq.heappush(self.memtable, (data['row'], self.mem_unique_id, data))
                 self.mem_unique_id += 1
             self.memindex = helpers.read_dict_from_table_file(server_folder_path, table_name, tablet_name, 'ssindex')
@@ -260,7 +263,10 @@ class Tablet:
             # new
             self.metadata = {
                 'next_sstable_index': 0,
-                'uncommited_wal_line': 0
+                'uncommited_wal_line': 0,
+                'rowkey_set': set(),
+                'row_from': '',
+                'row_to': ''
             }
             self.memtable = []
             self.memindex = {}
@@ -273,10 +279,25 @@ class Tablet:
         # do insert
         # 1. write wal
         # 2. append memtable and even do spilling
+        row_key = args_dict['row']
         helpers.write_table_wal(self.server_folder_path, self.table_name, self.tablet_name, args_dict)
-        heapq.heappush(self.memtable, (args_dict['row'], self.mem_unique_id, args_dict))
+        heapq.heappush(self.memtable, (row_key, self.mem_unique_id, args_dict))
         self.mem_unique_id += 1
-        self.mem_rowkey_set.add(args_dict['row'])
+        self.mem_rowkey_set.add(row_key)
+        self.memtable['rowkey_set'].add(row_key)
+        row_from = self.metadata['row_from']
+        row_to = self.metadata['row_to']
+        if row_from == '' or row_to == '':
+            row_from = row_key
+            row_to = row_from
+        else:
+            if row_key > row_to:
+                row_to = row_key
+            elif row_key < row_from:
+                row_from = row_key
+        self.metadata['row_from'] = row_from
+        self.metadata['row_to'] = row_to
+        helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'metadata', self.metadata)
         self.do_memtable_spill(max_mem_row)
 
 
