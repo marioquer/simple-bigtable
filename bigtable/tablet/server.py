@@ -33,7 +33,7 @@ class TabletServer:
         response = requests.post(url, json=params)
 
         self.tablet_server_id = response.json()['tablet_server_id']
-        self.server_folder_path = '{}{}'.format(helpers.FILE_FOLDER_PATH, 'server' + self.tablet_server_id)
+        self.server_folder_path = '{}{}'.format(helpers.FILE_FOLDER_PATH, 'server' + str(self.tablet_server_id))
         self.server_metadata_path = '{}/{}'.format(self.server_folder_path, 'metadata')
 
         # do recovery
@@ -228,6 +228,7 @@ class TabletServer:
 class Tablet:
     memtable = None
     memindex = None
+    mem_rowkey_set = None
     metadata = None
     table_name = ''
     tablet_name = ''
@@ -238,6 +239,7 @@ class Tablet:
     # metadata store commit log postion, sstable next name?
 
     def __init__(self, server_folder_path, table_name, tablet_name):
+        self.mem_rowkey_set = set()
         self.table_name = table_name
         self.tablet_name = tablet_name
         self.server_folder_path = server_folder_path
@@ -273,6 +275,7 @@ class Tablet:
         helpers.write_table_wal(self.server_folder_path, self.table_name, self.tablet_name, args_dict)
         heapq.heappush(self.memtable, (args_dict['row'], self.mem_unique_id, args_dict))
         self.mem_unique_id += 1
+        self.mem_rowkey_set.add(args_dict['row'])
         self.do_memtable_spill(max_mem_row)
 
 
@@ -366,14 +369,18 @@ class Tablet:
 
 
     def do_memtable_spill(self, max_mem_row):
-        memtable_len = len(self.memtable)
-        if memtable_len > max_mem_row:
+        mem_rowkey_set_len = len(self.mem_rowkey_set)
+        if mem_rowkey_set_len > max_mem_row:
             # split
-            sstable_data = self.memtable[0: max_mem_row]
-            self.memtable = self.memtable[max_mem_row:]
+            memtable_len = len(self.memtable)
+            sstable_data = self.memtable[0: -1]
+            self.memtable = [self.memtable[-1]]
+            # clear rowkey set
+            self.mem_rowkey_set.clear()
+            self.mem_rowkey_set.add(self.memtable[0][0])
             # store sstable with sorted key
             sstable_name = 'sstable{}'.format(self.metadata['next_sstable_index'])
-            helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, sstable_name, heapq.nsmallest(max_mem_row, sstable_data))
+            helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, sstable_name, heapq.nsmallest(len(sstable_data), sstable_data))
             self.metadata['next_sstable_index'] += 1
             # construct in-memory index
             for t in sstable_data:
@@ -383,7 +390,7 @@ class Tablet:
             # store ssindex
             helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'ssindex', self.memindex)
             # mark committed in wal
-            self.metadata['uncommited_wal_line'] += max_mem_row
+            self.metadata['uncommited_wal_line'] += (memtable_len - 1)
             helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'metadata', self.metadata)
 
 
