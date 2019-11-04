@@ -14,21 +14,40 @@ class MasterServer:
         self.table_locations = {}  # {'table_name': [tablet_server_id]}
         self.current_tablet_server_id = 0 # round robin: next server
         self.tablet_server_count = 0 # updated when a new tablet server integrated
+        self.unavailable_tablet_servers = []
 
         # tablet servers info: {tablet_server_id: {'hostname': '', 'port': ''} }
         self.tablet_servers = {}
 
     def check_single_tablet_server_status(self, tablet_server_id, hostname, port):
+        print('------------------------')
+        print(hostname)
+        print(port)
         response = check_single_tablet_server_status_helper(hostname, port)
-        while response.status_code is 200:
+        print('status_code: ' + str(response))
+        # While tablet server is running
+        while response is 200:
             time.sleep(2)
             response = check_single_tablet_server_status_helper(hostname, port)
-
+            
         # When the server is down, do recovery
+        self.unavailable_tablet_servers.append(tablet_server_id)
         self.recovery_for_server_down(tablet_server_id)
 
     def recovery_for_server_down(self, tablet_server_id):
-        pass
+        # find a new tablet server as target tablet server
+        for server_id in self.tablet_servers.keys():
+            if server_id != tablet_server_id:
+                target_tablet_server_id = server_id
+                break
+        
+        # restore data on the new server
+        restore_data_on_new_server(
+            tablet_server_id,
+            target_tablet_server_id,
+            self.tablet_servers[target_tablet_server_id]['hostname'],
+            self.tablet_servers[target_tablet_server_id]['port']
+        )
 
     def register_tablet_server(self, args):
         try:
@@ -46,13 +65,19 @@ class MasterServer:
             'port': port
         }
 
-        # try:
-        #     threading.Thread(target=self.check_single_tablet_server_status, args=(tablet_server_id, hostname, port, )
-        #     )
-        # except:
-        #     self.logger.error(
-        #         "Error to start a new thread for monitoring hostname " + str(hostname)
-        #     )
+        # start checking tablet server status
+        try:
+            t = threading.Thread(
+                target=self.check_single_tablet_server_status, args=(tablet_server_id, hostname, port, )
+            )
+            t.start()
+            self.logger.info(
+                "Start a new thread for monitoring hostname " + str(hostname)
+            )
+        except:
+            self.logger.error(
+                "Error to start a new thread for monitoring hostname " + str(hostname)
+            )
         # update tablet_server_count
         self.tablet_server_count += 1
         
@@ -159,6 +184,8 @@ class MasterServer:
 
         tablets = []
         for target_tablet_server_id in self.table_locations[table_name]:
+            if target_tablet_server_id in self.unavailable_tablet_servers:
+                continue
             hostname = self.tablet_servers[target_tablet_server_id]['hostname']
             port = self.tablet_servers[target_tablet_server_id]['port']
 

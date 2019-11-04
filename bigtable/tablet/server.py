@@ -57,8 +57,8 @@ class TabletServer:
             self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0')
         return '', 200
 
-
     def check_tablet_server_status(self):
+        print('tablet_server: check tablet server status')
         return '', 200
 
     def list_tables(self):

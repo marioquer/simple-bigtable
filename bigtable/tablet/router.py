@@ -10,11 +10,20 @@ app = Flask(__name__)
 tablet_server = server.TabletServer(sys.argv)
 
 '''
+Restore Tablet Server
+'''
+@app.route('/api/restore', methods=['GET'])
+def restore_tablet_server():
+    # restore data on the tablet server
+    return tablet_server.restore_tablet_server()
+
+'''
 Check Tablet Server status
 '''
 @app.route('/api/tabletstatus', methods=['GET'])
 def check_tablet_server_status():
-    # register tablet server
+    # check tablet server status
+    print('router: check tablet server status')
     return tablet_server.check_tablet_server_status()
 
 '''
