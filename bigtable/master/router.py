@@ -9,13 +9,12 @@ master_server = MasterServer()
 
 
 '''
-Table Operations
+Register Tablet Server
 '''
 @app.route('/api/tabletservers', methods=['POST'])
-def get_tablet_server_info():
+def register_tablet_server():
     # register tablet server
     return master_server.register_tablet_server(request.data)
-
 
 '''
 Table Operations

@@ -27,10 +27,10 @@ class BalancerTests(unittest.TestCase):
         return suite
 
     def test_populate_data(self):
-        movie_file = os.path.join(os.getcwd(), "../dataset/movies.csv")
+        movie_file = os.path.join(os.getcwd(), "dataset/movies.csv")
         self.assertTrue(os.path.exists(movie_file))
 
-        camera_file = os.path.join(os.getcwd(), "../dataset/camera.csv")
+        camera_file = os.path.join(os.getcwd(), "dataset/camera.csv")
         self.assertTrue(os.path.exists(camera_file))
 
         # Read in the movies data
@@ -90,7 +90,7 @@ class BalancerTests(unittest.TestCase):
         
 
         # get table info for the movies table
-        url =  MySupport.url(self.HOSTNAME, self.PORT, "/api/tables/movies/")
+        url =  MySupport.url(self.HOSTNAME, self.PORT, "/api/tables/movies")
         response = requests.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.content)
@@ -98,11 +98,11 @@ class BalancerTests(unittest.TestCase):
         self.assertEqual(tablet_info["name"], "movies")
         self.assertEqual(len(tablet_info["tablets"]), 1)
         
-        self.movie_server['hostname'] = tablet_info["tablets"][0]['hostname'];
-        self.movie_server['port'] = tablet_info["tablets"][0]['port'];
+        self.movie_server['hostname'] = tablet_info["tablets"][0]['hostname']
+        self.movie_server['port'] = tablet_info["tablets"][0]['port']
 
         # get table info for the cameras table
-        url =  MySupport.url(self.HOSTNAME, self.PORT, "/api/tables/cameras/")
+        url =  MySupport.url(self.HOSTNAME, self.PORT, "/api/tables/cameras")
         response = requests.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.content)
@@ -110,8 +110,8 @@ class BalancerTests(unittest.TestCase):
         self.assertEqual(tablet_info["name"], "cameras")
         self.assertEqual(len(tablet_info["tablets"]), 1)
         
-        self.camera_server['hostname'] = tablet_info["tablets"][0]['hostname'];
-        self.camera_server['port'] = tablet_info["tablets"][0]['port'];
+        self.camera_server['hostname'] = tablet_info["tablets"][0]['hostname']
+        self.camera_server['port'] = tablet_info["tablets"][0]['port']
         
         # Both tables shouldn't have been assigned to the same tablet due to load balancing.
         # Need to run atleast 2 tablet servers to pass this test.

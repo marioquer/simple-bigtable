@@ -54,6 +54,9 @@ class TabletServer:
             for key in self.metadata['tables'].keys():
                 self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0')
 
+    def check_tablet_server_status(self):
+        return '', 200
+
     def list_tables(self):
         return {
                 'tables': list(self.metadata['tables'].keys())
@@ -62,8 +65,6 @@ class TabletServer:
     def create_table(self, args):
         try:
             args_dict = json.loads(args)
-            print("----------------------")
-            print(args_dict)
         except ValueError:
             return '', 400
 

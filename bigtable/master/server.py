@@ -1,5 +1,7 @@
 import os
 import sys
+import threading
+import time
 sys.path.insert(0, os.path.abspath(os.path.join(__file__, '../../..')))
 from bigtable.master.helpers import *
 import logging
@@ -15,6 +17,18 @@ class MasterServer:
 
         # tablet servers info: {tablet_server_id: {'hostname': '', 'port': ''} }
         self.tablet_servers = {}
+
+    def check_single_tablet_server_status(self, tablet_server_id, hostname, port):
+        response = check_single_tablet_server_status_helper(hostname, port)
+        while response.status_code is 200:
+            time.sleep(2)
+            response = check_single_tablet_server_status_helper(hostname, port)
+
+        # When the server is down, do recovery
+        self.recovery_for_server_down(tablet_server_id)
+
+    def recovery_for_server_down(self, tablet_server_id):
+        pass
 
     def register_tablet_server(self, args):
         try:
@@ -32,6 +46,13 @@ class MasterServer:
             'port': port
         }
 
+        # try:
+        #     threading.Thread(target=self.check_single_tablet_server_status, args=(tablet_server_id, hostname, port, )
+        #     )
+        # except:
+        #     self.logger.error(
+        #         "Error to start a new thread for monitoring hostname " + str(hostname)
+        #     )
         # update tablet_server_count
         self.tablet_server_count += 1
         

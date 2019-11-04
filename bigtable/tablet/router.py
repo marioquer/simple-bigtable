@@ -10,6 +10,14 @@ app = Flask(__name__)
 tablet_server = server.TabletServer(sys.argv)
 
 '''
+Check Tablet Server status
+'''
+@app.route('/api/tabletstatus', methods=['GET'])
+def check_tablet_server_status():
+    # register tablet server
+    return tablet_server.check_tablet_server_status()
+
+'''
 Table Operations
 '''
 @app.route('/api/tables', methods=['GET', 'POST'])
