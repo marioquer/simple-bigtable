@@ -54,6 +54,14 @@ def tables_info(pk):
 
 
 '''
+Get Tablet Info
+'''
+@app.route('/api/tablets/<string:pk>', methods=['GET'])
+def tablets_info(pk):
+    return tablet_server.get_tablets_info(pk)
+
+
+'''
 Row Operations
 '''
 @app.route('/api/table/<string:pk>/row', methods=['GET'])
@@ -96,6 +104,14 @@ Receive Sharding
 '''
 @app.route('/api/sendshard', methods=['POST'])
 def send_shard():
+    '''
+    {
+        'table_name': 'table',
+        'row_from': 'a',
+        'row_to': 'b',
+        'data': []
+    }
+    '''
     return tablet_server.receive_shard(request.data)
 
 

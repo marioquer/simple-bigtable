@@ -125,6 +125,17 @@ class TabletServer:
         print(self.metadata['tables'][table_name])
         return self.metadata['tables'][table_name], 200
 
+
+    def get_tablets_info(self, table_name):
+        if not table_name in self.metadata['tables']:
+            return '', 404
+        tablet = self.table_objs[table_name]
+        return {
+            'row_from': tablet.metadata['row_from'],
+            'row_to': tablet.metadata['row_to']
+        }, 200
+    
+
     def insert_cell(self, table_name, args):
         # check existence of table
         if not table_name in self.table_objs.keys():
