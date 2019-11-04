@@ -115,14 +115,9 @@ class TabletServer:
         # 409 for checkpoint2
 
     def get_table_info(self, table_name):
-        print('get_table_info_called...')
         if not table_name in self.metadata['tables']:
-            print()
-            print(table_name + ' not in current tablet')
             return '', 404
 
-        print('------------------------------')
-        print(self.metadata['tables'][table_name])
         return self.metadata['tables'][table_name], 200
 
 

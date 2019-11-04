@@ -19,6 +19,31 @@ class MasterServer:
         # tablet servers info: {tablet_server_id: {'hostname': '', 'port': ''} }
         self.tablet_servers = {}
 
+    def get_sharding_target_server(self, args):
+        # check json format
+        args_dict = {}
+        if args != b'':
+            try:
+                args_dict = json.loads(args)
+            except ValueError:
+                return '', 400
+        
+        old_server_id = args_dict['from']['server_id']
+        sharding_table_name = args_dict['from']['table_name']
+
+        # find a sharding target server
+        for i in range(self.tablet_server_count):
+            if i in self.unavailable_tablet_servers:
+                continue
+            if i in self.table_locations[sharding_table_name]:
+                continue
+            
+            hostname = self.tablet_servers[i]['hostname']
+            port = self.tablet_servers[i]['port']
+            break
+        
+        return hostname, port
+
     def check_single_tablet_server_status(self, tablet_server_id, hostname, port):
         time.sleep(2)
         response = check_single_tablet_server_status_helper(hostname, port)
@@ -202,11 +227,9 @@ class MasterServer:
             # found on this tablet server
             else:
                 response_dict = response.json()
-                # TODO: change row_from & row_to
-                # row_from = response_dict['row_from']
-                # row_to = response_dict['row_to']
-                row_from = 'a'
-                row_to = 'z'
+                row_from = response_dict['row_from']
+                row_to = response_dict['row_to']
+
                 tablets.append(
                     {
                         "hostname": hostname,

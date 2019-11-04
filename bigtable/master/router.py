@@ -57,16 +57,14 @@ Relinquishes a table
 def close_table(pk):
     return master_server.close_table(pk, request.data)
 
-
 '''
 Decide sharding
 '''
 @app.route('/api/sharding', method=['POST'])
 def sharding():
-    request.data # {'from': {'table_name': table_name, 'server_id': id}}
-    # TODO: give a target server for sharding and record it
-    target_host = ''
-    target_port = 0
+    # {'from': {'table_name': table_name, 'server_id': id}}
+    # give a target server for sharding and record it
+    target_host, target_port = master_server.get_sharding_target_server(request.data)
     return {
         'target_host': target_host,
         'target_port': target_port,

@@ -26,7 +26,7 @@ def request_get_table_info(table_name, hostname, port):
     '''
         Send request of get table info from the tablet server #id
     '''
-    url = "http://" + hostname + ":" + port + "/api/tables/" + table_name
+    url = "http://" + hostname + ":" + port + "/api/tablets/" + table_name
     return requests.get(url)
 
 def check_single_tablet_server_status_helper(hostname, port):
