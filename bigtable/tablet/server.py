@@ -264,7 +264,7 @@ class Tablet:
             self.metadata = {
                 'next_sstable_index': 0,
                 'uncommited_wal_line': 0,
-                'rowkey_set': set(),
+                'rowkey_set': [],
                 'row_from': '',
                 'row_to': ''
             }
@@ -284,7 +284,7 @@ class Tablet:
         heapq.heappush(self.memtable, (row_key, self.mem_unique_id, args_dict))
         self.mem_unique_id += 1
         self.mem_rowkey_set.add(row_key)
-        self.memtable['rowkey_set'].add(row_key)
+        self.metadata['rowkey_set'].append(row_key)
         row_from = self.metadata['row_from']
         row_to = self.metadata['row_to']
         if row_from == '' or row_to == '':
