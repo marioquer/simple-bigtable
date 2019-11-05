@@ -1,7 +1,7 @@
 include hosts.mk
 
 # EDIT THIS
-MASTER_CMD=python3 sample_server.py
+MASTER_CMD=python3 -m venv bigtable/venv; source bigtable/venv/bin/activate; pip3 install flask; pip3 install requests; python3 bigtable/master/router.py
 TABLET_CMD=python3 -m venv bigtable/venv; source bigtable/venv/bin/activate; pip3 install flask; pip3 install requests; python3 bigtable/tablet/router.py
 # END EDIT REGION
 

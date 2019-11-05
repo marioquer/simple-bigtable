@@ -11,8 +11,7 @@ class SpecialTests(unittest.TestCase):
     def suite():
         suite = unittest.TestSuite()
         suite.addTest(SpecialTests('test_recovery'))
-        # TODO: uncomment it
-        #suite.addTest(SpecialTests('test_shard'))
+        suite.addTest(SpecialTests('test_shard'))
 
         return suite
 
@@ -207,8 +206,7 @@ class SpecialTests(unittest.TestCase):
         input()
 
         print("Going to sleep for 1 minute for recovery to complete.")
-        # TODO: Change 5 to 60
-        time.sleep(5)
+        time.sleep(60)
 
         print ("Woken up from sleep. Continuing to read data.")
 
@@ -223,8 +221,7 @@ class SpecialTests(unittest.TestCase):
         new_tablet_hostname = new_tablet_info["tablets"][0]["hostname"]
         new_tablet_port = new_tablet_info["tablets"][0]["port"]
 
-        # TODO: uncomment it
-        #self.assertNotEqual(tablet_hostname, new_tablet_hostname)
+        self.assertNotEqual(tablet_hostname, new_tablet_hostname)
         url_tablet = MySupport.url(new_tablet_hostname, new_tablet_port, "/api/table/table_rcvr/cell")
 
         for i in range(self.MEM_TABLE_LIMIT + self.EXTRA_ROWS):

@@ -5,6 +5,7 @@ import requests
 import shutil
 import logging
 import json
+import threading
 
 sys.path.insert(0, os.path.abspath(os.path.join(__file__, '../../..')))
 from bigtable.tablet import helpers
@@ -60,11 +61,10 @@ class TabletServer:
     def restore_tablet_server(self):
         self.metadata = helpers.read_server_metadata(self.server_metadata_path)
         for key in self.metadata['tables'].keys():
-            self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0', self.master_info)
+            self.table_objs[key] = Tablet(self.server_folder_path, key, key + '0', self.server_info, self.metadata['tables'][key])
         return '', 200
 
     def check_tablet_server_status(self):
-        print('tablet_server: check tablet server status')
         return '', 200
 
     def list_tables(self):
@@ -93,7 +93,7 @@ class TabletServer:
             print ("Creation of the directory %s failed" % tablet_dir_path)        
         
         # create new Table obj and add to map TODO: tablet obj update
-        self.table_objs[table_name] = Tablet(self.server_folder_path, table_name, table_name + '0', self.master_info)
+        self.table_objs[table_name] = Tablet(self.server_folder_path, table_name, table_name + '0', self.server_info, self.metadata['tables'][table_name])
 
         return '', 200
 
@@ -248,9 +248,48 @@ class TabletServer:
         return '', 200
 
     def receive_shard(self, args):
-        table_name = args['table_name']
-        # TODO: update table_obj
-        # TODO: save sstable, restore ssindex and memindex, update metadata
+        # update table_obj
+        args_dict = {}
+        if args != b'':
+            try:
+                args_dict = json.loads(args)
+            except ValueError:
+                return '', 400
+
+        table_name = args_dict['table_name']
+        
+
+        self.metadata['tables'][table_name] = args_dict['table_info']
+        helpers.write_server_metadata(self.server_metadata_path, self.metadata)
+        try:
+            tablet_dir_path = '{}/{}/{}'.format(self.server_folder_path, table_name, table_name + '0')
+            os.makedirs(tablet_dir_path)
+        except OSError:
+            print ("Creation of the directory %s failed" % tablet_dir_path)        
+        
+        # create new Table obj and add to map tablet obj update
+        self.table_objs[table_name] = Tablet(self.server_folder_path, table_name, table_name + '0', self.server_info, self.metadata['tables'][table_name])
+        target_tablet = self.table_objs[table_name]
+        
+        # logging
+        helpers.write_dict_to_table_file(target_tablet.server_folder_path, target_tablet.table_name, target_tablet.tablet_name, 'log', args_dict)
+
+        # construct ssindex and memindex
+        for shard_data in args_dict['data']:
+            for row in shard_data['data']:
+                target_tablet.metadata['rowkey_set'].append(row[0])
+                if row[0] not in target_tablet.memindex:
+                    target_tablet.memindex[row[0]] = []
+                target_tablet.memindex[row[0]].append(shard_data['ssfile'])
+            helpers.write_dict_to_table_file(target_tablet.server_folder_path, table_name, table_name + '0', shard_data['ssfile'], heapq.nsmallest(len(shard_data['data']), shard_data['data']))
+            target_tablet.metadata['next_sstable_index'] += 1
+        helpers.write_dict_to_table_file(target_tablet.server_folder_path, table_name, table_name + '0', 'ssindex', target_tablet.memindex)
+
+        # update metadata
+        target_tablet.metadata['rowkey_set']
+        target_tablet.metadata['row_from'] = args_dict['row_from']
+        target_tablet.metadata['row_to'] = args_dict['row_to']
+        helpers.write_dict_to_table_file(target_tablet.server_folder_path, target_tablet.table_name, target_tablet.tablet_name, 'metadata', target_tablet.metadata)
         return '', 200
 
 
@@ -268,10 +307,11 @@ class Tablet:
     server_folder_path = ''
     
 
-    def __init__(self, server_folder_path, table_name, tablet_name, server_info):
+    def __init__(self, server_folder_path, table_name, tablet_name, server_info, table_info):
         self.mem_rowkey_set = set()
         self.table_name = table_name
         self.tablet_name = tablet_name
+        self.table_info = table_info
         self.server_folder_path = server_folder_path
         self.tablet_folder_path = '{}/{}/{}'.format(server_folder_path, table_name, tablet_name)
         self.server_info = server_info
@@ -327,7 +367,14 @@ class Tablet:
         self.metadata['row_to'] = row_to
         helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'metadata', self.metadata)
         self.do_memtable_spill(max_mem_row)
-        self.do_sharding()
+        # do sharding in background
+        try:
+            t = threading.Thread(
+                self.do_sharding()
+            )
+            t.start()
+        except Exception as e:
+            print(e)
 
 
     def get_a_cell(self, rowkey, column_family, column):
@@ -449,19 +496,48 @@ class Tablet:
         row_set = set(self.metadata['rowkey_set'])
         row_set_len = len(row_set)
         if row_set_len == self.tablet_max_limit:
-            # TODO: do sharding
+            # do sharding
             request_sharding_url = "http://{}:{}/api/sharding".format(self.server_info['master_hostname'], self.server_info['master_port'])
             data = {
-                'table_name': self.table_name,
-                'server_id': self.server_info['tablet_server_id']
+                'from': {
+                    'table_name': self.table_name,
+                    'server_id': self.server_info['tablet_server_id']
+                }
             }
             response_dict = requests.post(request_sharding_url, json=data).json()
 
-            # TODO: get data from sstable
-            ssdata = {}
+            # get data from sstable
+            row_set_list = list(row_set)
+            row_keys_to_shard = heapq.nsmallest(self.tablet_max_limit // 2, row_set_list)
+            shards_list = []
+
+            ss_next_index = self.metadata['next_sstable_index']
+            for i in range(ss_next_index):
+                ssdata = helpers.read_dict_from_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'sstable{}'.format(i))
+                each_file_list = []
+                for ss in ssdata:
+                    if ss[0] in row_keys_to_shard:
+                        each_file_list.append(ss)
+
+                if len(each_file_list) > 0:
+                    shards_list.append({
+                        'ssfile': 'sstable{}'.format(i),
+                        'data': each_file_list
+                    })
+            
             sharding_url = "http://{}:{}/api/sendshard".format(response_dict['target_host'], response_dict['target_port'])
-            response = requests.post(sharding_url, json=ssdata)
-            # TODO: update metadata
+            middle_border = max(heapq.nsmallest(self.tablet_max_limit // 2 + 1, row_set_list))
+            sharding_req = {
+                'table_name': self.table_name,
+                'table_info': self.table_info,
+                'row_from': min(row_keys_to_shard),
+                'row_to': middle_border,
+                'data': shards_list
+            }
+            response = requests.post(sharding_url, json=sharding_req)
+            # update metadata
+            self.metadata['row_from'] = middle_border
+            helpers.write_dict_to_table_file(self.server_folder_path, self.table_name, self.tablet_name, 'metadata', self.metadata)
             
 
 

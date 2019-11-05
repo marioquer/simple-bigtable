@@ -2,7 +2,6 @@ from flask import Flask, escape, request
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(__file__, '../../..')))
-print(sys.path)
 from bigtable.master.server import *
 
 app = Flask(__name__)
@@ -60,7 +59,7 @@ def close_table(pk):
 '''
 Decide sharding
 '''
-@app.route('/api/sharding', method=['POST'])
+@app.route('/api/sharding', methods=['POST'])
 def sharding():
     # {'from': {'table_name': table_name, 'server_id': id}}
     # give a target server for sharding and record it

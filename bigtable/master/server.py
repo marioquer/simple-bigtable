@@ -40,6 +40,7 @@ class MasterServer:
             
             hostname = self.tablet_servers[i]['hostname']
             port = self.tablet_servers[i]['port']
+            self.table_locations[sharding_table_name].append(i)
             break
         
         return hostname, port
